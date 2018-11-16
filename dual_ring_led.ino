@@ -46,6 +46,10 @@
 // Matrix of LED values, used by FastLED to do the displays.
 CRGB leds[NUM_LEDS];
 
+// two useful "virtual" arrays
+CRGB *inner_leds=leds;
+CRGB *outer_leds=&(leds[OUTER_START]);
+
 //CRGBPalette16 my_palette =
 const TProgmemPalette16 my_palette PROGMEM =
 {
@@ -86,7 +90,8 @@ typedef enum
   PATTERN_SYNC_COUNTER,
   PATTERN_PULSE,
   PATTERN_OPPOSITES, 
-  PATTERN_TEST
+  PATTERN_TEST,
+  PATTERN_COLLIDE_OUTER
 } pattern_type;
 
 pattern_type current_pattern;
@@ -387,6 +392,7 @@ void make_outer_counter_clockwise_streak(int streak_size, CRGB background, CRGB 
   // since outer indexes go counter-clockwise, we need to start at the head, and build to the tail
   fill_gradient_RGB(&(leds[OUTER_START]), streak_size, head, background); 
 }
+
 /*===================================================================================
  * Function: draw_inner_clockwise_streak
  * The draw_ functions are different from the make_ functions;
@@ -403,6 +409,71 @@ void draw_inner_clockwise_streak(int start_index, int streak_size, CRGB head, CR
    if (streak_size > NUM_INNER) streak_size = NUM_INNER;
 
    draw_streak_helper(leds, NUM_INNER, start_index, streak_size, head, tail);
+}
+
+/*===================================================================================
+ * Function: draw_inner_counter_clockwise_streak
+ * The draw_ functions are different from the make_ functions;
+ *   - They don't fill in the background
+ *   - You specify the starting location
+ *   - They are more processor and memory intensive.
+ *  What does this mean?  Use the make_ functions if you can.  If not, use draw_.
+ *  
+ */
+void draw_inner_counter_clockwise_streak(int start_index, int streak_size, CRGB head, CRGB tail)
+{
+   if (start_index < 0) start_index = 0;
+   if (start_index > LAST_INNER) start_index = LAST_INNER;
+   if (streak_size > NUM_INNER) streak_size = NUM_INNER;
+
+   // since we're filling "backwards", we need to adjust our starting position
+   start_index = start_index - streak_size + 1;
+   if (start_index < 0) start_index = start_index + NUM_INNER;
+    
+   draw_streak_helper(leds, NUM_INNER, start_index, streak_size, tail, head);
+}
+
+/*===================================================================================
+ * Function: draw_outer_clockwise_streak
+ * The draw_ functions are different from the make_ functions;
+ *   - They don't fill in the background
+ *   - You specify the starting location
+ *   - They are more processor and memory intensive.
+ *  What does this mean?  Use the make_ functions if you can.  If not, use draw_.
+ *  
+ *  Note that "start index" is the index into the outer_leds array, not the absolute index.
+ */
+void draw_outer_counter_clockwise_streak(int start_index, int streak_size, CRGB head, CRGB tail)
+{
+   if (start_index < 0) start_index = 0;
+   if (start_index > NUM_OUTER) start_index = NUM_OUTER -1;
+   if (streak_size > NUM_OUTER) streak_size = NUM_OUTER;
+
+   draw_streak_helper(outer_leds, NUM_OUTER, start_index, streak_size, head, tail);
+}
+
+/*===================================================================================
+ * Function: draw_outer_counter_clockwise_streak
+ * The draw_ functions are different from the make_ functions;
+ *   - They don't fill in the background
+ *   - You specify the starting location
+ *   - They are more processor and memory intensive.
+ *  What does this mean?  Use the make_ functions if you can.  If not, use draw_.
+ *  
+ *  Note that "start index" is the index into the outer_leds array, not the absolute index.
+ *  
+ */
+void draw_outer_clockwise_streak(int start_index, int streak_size, CRGB head, CRGB tail)
+{
+   if (start_index < 0) start_index = 0;
+   if (start_index > NUM_OUTER) start_index = NUM_OUTER - 1;
+   if (streak_size > NUM_OUTER) streak_size = NUM_OUTER;
+
+   // since we're filling "backwards", we need to adjust our starting position
+   start_index = start_index - streak_size + 1;
+   if (start_index < 0) start_index = start_index + NUM_OUTER;
+   
+   draw_streak_helper(outer_leds, NUM_OUTER, start_index, streak_size, tail, head);
 }
 
 /****=======================  PRE-DEFINED PATTERNS ============================******/
@@ -621,7 +692,7 @@ void init_test( void )
   current_pattern = PATTERN_TEST;
 }
 
-#define TEST_PATTERN_TIME_INCREMENT 500
+#define TEST_PATTERN_TIME_INCREMENT 100
 void move_test( void )
 {
   static unsigned long last_update_time=0;
@@ -662,6 +733,36 @@ void move_test( void )
   
 }  // end of move_test
 
+/********************************************
+ * PATTERN:  collide outer
+ */
+int clockwise_streak_index;
+int counter_clockwise_streak_index;
+
+void init_collide_outer( void )
+{
+    current_pattern = PATTERN_COLLIDE_OUTER;  
+
+    fill_all(CRGB::Black);
+
+    clockwise_streak_index=0;
+    counter_clockwise_streak_index=0;
+}
+
+void move_collide_outer( void )
+{
+  fill_outer(CRGB::Black);
+  
+  draw_outer_counter_clockwise_streak(counter_clockwise_streak_index, 5, CRGB::Red, CRGB::Blue);
+  draw_outer_clockwise_streak(clockwise_streak_index, 5, CRGB::Red, CRGB::Blue);
+
+  clockwise_streak_index++;
+  if (clockwise_streak_index > NUM_OUTER) clockwise_streak_index = 0;
+
+  counter_clockwise_streak_index--;
+  if (counter_clockwise_streak_index < 0) counter_clockwise_streak_index = NUM_OUTER - 1;
+}
+
 /*===================  MAIN FUNCTIONS ==============================*/
 void move_pattern( void )
 {
@@ -691,6 +792,9 @@ void move_pattern( void )
       move_test();
     break;
 
+    case PATTERN_COLLIDE_OUTER:
+      move_collide_outer();
+    break;
   }
 }
 
@@ -705,6 +809,7 @@ void print_help( void )
   Serial.println("4 pulses colors");
   Serial.println("5 moves in opposite directions");
   Serial.println("6 prints the test pattern");
+  Serial.println("7 selects the collide-outer pattern");
   Serial.println("0 blacks out display");
 }
 
@@ -766,6 +871,12 @@ void user_input( void )
           init_test();
           Serial.println("Test pattern selected");
       break;
+
+      case '7':
+          init_collide_outer();
+          Serial.println("Collide outer pattern selected");
+      break;
+      
       
       case '0':
          blackout();
