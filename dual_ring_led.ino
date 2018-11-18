@@ -20,93 +20,100 @@
  * Finally, this is all built on the FastLED library that does the actual LED manipulations.
  */
 
+
+/******=====  Begin DualLed.h HEADER =======*/
 #include <SoftwareSerial.h>
 #include <FastLED.h>
-
-
-// Hardware definitions for our LED strip.
-#define LED_PIN    6
-#define LED_TYPE    WS2812
-#define COLOR_ORDER GRB
-
-#define BRIGHTNESS  30
 
 // Our LED Matrix:
 // 16 LEDs in the inner loop, going couter-clockwise.
 // 24 LEDs in the outer loop, going clockwise.
 // These are helpful defines for where the loops start and end.
-#define NUM_LEDS    40
-#define INNER_START 0
-#define NUM_INNER  16
-#define OUTER_START 16
-#define NUM_OUTER 24
-#define LAST_INNER (NUM_INNER - 1)
-#define LAST_OUTER (NUM_LEDS - 1)
+#define DUAL_RING_NUM_INNER  16
+#define DUAL_RING_NUM_OUTER  24
+#define DUAL_RING_LAST_INNER (DUAL_RING_NUM_INNER - 1)
+#define DUAL_RING_LAST_OUTER (DUAL_RING_NUM_OUTER - 1)
 
-// Matrix of LED values, used by FastLED to do the displays.
-CRGB leds[NUM_LEDS];
+typedef void (*dualRingFuncType)();
 
-// two useful "virtual" arrays
-CRGB *inner_leds=leds;
-CRGB *outer_leds=&(leds[OUTER_START]);
-
-//CRGBPalette16 my_palette =
-const TProgmemPalette16 my_palette PROGMEM =
+class DualRingLED
 {
-  CRGB::Blue,
-  CRGB::Red,
-  CRGB::Yellow,
-  CRGB::Blue,
+  public:
+    DualRingLED(int pin);
+    run(void);
+    run(int delay);
+    CRGB *innerLEDs;
+    CRGB *outerLEDs;
+    void setPattern(dualRingFuncType runFunc);
 
-  CRGB::Blue,
-  CRGB::Red,
-  CRGB::Yellow,
-  CRGB::Blue,
+    fillAll(CRGB color);
+    fillInner(CRGB color);
+    fillOuter(CRGB color);
+    rotateInnerClockwise(void);
+    rotateInnerCounterClockwise(void);
+    rotateOuterClockwise(void);
+    rotateOuterCounterClockwise(void);
+    makeInnerBump(int bumpSize, CRGB background, CRGB bump);
+    makeOuterBump(int bumpSize, CRGB background, CRGB bump);
+    makeInnerClockwiseStreak( int streakSize, CRGB background, CRGB Head);
+    makeInnerCounterClockwiseStreak(int streakSize, CRGB background, CRGB Head);
+    makeOuterClockwiseStreak( int streakSize, CRGB background, CRGB Head);
+    makeOuterCounterClockwiseStreak(int streakSize, CRGB background, CRGB Head);
+    drawInnerClockwiseStreak(int streakSize, CRGB head, CRGB tail);
+    drawInnerCounterClockwiseStreak(int streakSize, CRGB head, CRGB tail);
+    drawOuterClockwiseStreak(int streakSize, CRGB head, CRGB tail);
+    drawOuterCounterClockwiseStreak(int streakSize, CRGB head, CRGB tail);
+    
+    
 
-  CRGB::Blue,
-  CRGB::Red,
-  CRGB::Yellow,
-  CRGB::Blue,
+  private:
+    CRGB             _leds[40];
+    dualRingFuncType runFunc;
+
+    /* I don't think these actually need to be in the class...*/
+    _rotateDownHelper( CRGB *startLed, int num );
+    _rotateUpHelper( CRGB *startLed, int num );
+    _drawStreakHelper( CRGB *ringStart, int ringSize, int streakStartIndex, int streakSize, CRGB startColor, CRGB endColor);
+    _makeBumpHelper(int centerLed, int bumpSize, CRGB background, CRGB bump);
+    dualRingFuncType _runFunc;
+   
+
   
-  CRGB::Blue,
-  CRGB::Red,
-  CRGB::Yellow,
-  CRGB::Blue,
-
 };
+/******======  Begin DualLed.cpp library file   *****/
+// Hardware definitions for our LED strip.
+#define LED_TYPE    WS2812
+#define COLOR_ORDER GRB
 
-// We're using loop_delay to time our patterns...the bigger the delay, the slower the pattern.
-#define DEFAULT_LOOP_TIME 60
-#define MIN_LOOP_DELAY 10
-#define MAX_LOOP_DELAY 150
-int loop_delay=DEFAULT_LOOP_TIME;
+// Our LED Matrix:
+// 16 LEDs in the inner loop, going couter-clockwise.
+// 24 LEDs in the outer loop, going clockwise.
+// These are helpful defines for where the loops start and end.
+#define NUM_LEDS    (DUAL_RING_NUM_INNER + DUAL_RING_NUM_OUTER)
 
-// These are the pre-defined patterns.  
-typedef enum
+#define DEFAULT_BRIGHTNESS 30
+
+DualRingLED::DualRingLED(int pin)
 {
-  PATTERN_BLACK,
-  PATTERN_TICK,
-  PATTERN_SYNC_CLOCKWISE,
-  PATTERN_SYNC_COUNTER,
-  PATTERN_PULSE,
-  PATTERN_OPPOSITES, 
-  PATTERN_TEST,
-  PATTERN_COLLIDE_OUTER
-} pattern_type;
 
-pattern_type current_pattern;
-
-/*================ HELPER FUNCTIONS =============================================*/
+    // Well this is super annoying.  Templates only use constants?  Gotta look that up...but that means I need to do this differently.
+    FastLED.addLeds<LED_TYPE, 6, COLOR_ORDER>(_leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
+    FastLED.setBrightness(  DEFAULT_BRIGHTNESS );
+    
+    // clear the array, just in case.
+    fillAll(CRGB::Black);
+    FastLED.show();
+}
 
 /*===============================================================================
- * Function:  rotate_down_helper
+ * Function:  _rotateDownHelper
  *
  * Since the LEDs can be wired arbitrarily (is increasing the index going clockwise
  * or counter-clockwise), I'm gonna make these helpers just go "up" for increasing array
  * and "down" for decreasing array.  We can then map to clockwise and counter-clockwise
  * with the real rotate functions.
  */
-void rotate_down_helper( CRGB *start_led, int num )
+void DualRingLED::_rotateDownHelper( CRGB *start_led, int num )
 {
     CRGB roll_over_value;
     int i;
@@ -125,17 +132,17 @@ void rotate_down_helper( CRGB *start_led, int num )
     // Finally, store the last LED with that roll-over value.
     start_led[num - 1] = roll_over_value;
     
-}  // end of rotate_down_helper
+}  // end of _rotateDownHelper
 
 /*===============================================================================
- * Function:  rotate_up_helper
+ * Function:  _rotateUpHelper
  *
  * Since the LEDs can be wired arbitrarily (is increasing the index going clockwise
  * or counter-clockwise), I'm gonna make these helpers just go "up" for increasing array
  * and "down" for decreasing array.  We can then map to clockwise and counter-clockwise
  * with the real rotate functions.
  */
-void rotate_up_helper( CRGB *start_led, int num )
+void DualRingLED::_rotateUpHelper( CRGB *start_led, int num )
 {
     CRGB roll_over_value;
     int i;
@@ -157,14 +164,14 @@ void rotate_up_helper( CRGB *start_led, int num )
 }  // end of rotate_down_helper
 
 /*===============================================================================
- * Function:  draw_streak_helper
+ * Function:  _drawStreakHelper
  *
  * In some instances, we want to draw a streak spanning the roll-over point.
  * This helper function does that.
  * Note this is heavier weight than the simple "make clockwise/counter-clockwise streak"
  * functions...and it doesn't fill in the background...it *JUST* updates the streak pixels.
  */
-void draw_streak_helper( CRGB *ring_start, int ring_size, int streak_start_index, int streak_size, CRGB start_color, CRGB end_color)
+void DualRingLED::_drawStreakHelper( CRGB *ring_start, int ring_size, int streak_start_index, int streak_size, CRGB start_color, CRGB end_color)
 {
    CRGB temp_led[NUM_OUTER];
    int  copy_index;
@@ -208,93 +215,14 @@ void draw_streak_helper( CRGB *ring_start, int ring_size, int streak_start_index
   
 }
 
-/*================= USER PATTERN DEFINITION FUNCTIONS ======================*/
-
 /*===============================================================================
- * Function:  fill_all
- */
-void fill_all(CRGB color)
-{
-    fill_solid(leds, NUM_LEDS, color);
-}
-
-/*===============================================================================
- * Function:  fill_inner
- */
-void fill_inner(CRGB color)
-{
-    fill_solid(leds, NUM_INNER, color);
-}
-
-/*===============================================================================
- * Function:  fill_outer
- */
-void fill_outer(CRGB color)
-{
-    fill_solid(&(leds[OUTER_START]), NUM_OUTER, color);
-}
-
-/*===============================================================================
- * Function:  rotate_inner_clockwise
- */
-void rotate_inner_clockwise( void )
-{
-    rotate_down_helper(leds, NUM_INNER);
-}  
-
-
-/*===============================================================================
- * Function:  rotate_inner_counter_clockwise
- */
-void rotate_inner_counter_clockwise( void )
-{
-    rotate_up_helper(leds, NUM_INNER);
-}  
-
-/*===============================================================================
- * Function:  rotate_outer_clockwise
- */
-void rotate_outer_clockwise( void )
-{
-    rotate_up_helper(&(leds[OUTER_START]), NUM_OUTER);  
-}  // end of rotate_down_helper
-    
-/*===============================================================================
- * Function:  rotate_outer_counter_clockwise
- */
-void rotate_outer_counter_clockwise( void )
-{
-    rotate_down_helper(&(leds[OUTER_START]), NUM_OUTER);
-}  // end of rotate_down_helper
-
-/*===============================================================================
- * Function:  fill_with_palette
- * 
- * Fills, using palette, from start_led to stop_led.
- */
-void fill_with_palette( int start_led, int stop_led, uint8_t brightness, CRGBPalette16 palette, int palette_start, int palette_step )
-{
-  int i;
-  int palette_index;
-
-  palette_index = palette_start;
-
-  for (i = start_led; i <= stop_led; i++)
-  {
-    leds[i] = ColorFromPalette(palette, palette_index, brightness, LINEARBLEND);
-    palette_index = palette_index + palette_step;
-  }
-
-}
-
-/*===============================================================================
- * Function:  make_bump
+ * Function:  _makeBumpHelper
  * 
  * bump size is the number of leds on either side of the bump led...so bump size of 2
  *   gives a TOTAL LED size of 5...one in the center, and 2 on either side.
  * 
  */
-void make_bump(int center_led, int bump_size, CRGB background, CRGB bump)
+void DualRingLED::_makeBumpHelper(int center_led, int bump_size, CRGB background, CRGB bump)
 {
   int start_led_index;
   
@@ -311,42 +239,103 @@ void make_bump(int center_led, int bump_size, CRGB background, CRGB bump)
   
 }
 
+
 /*===============================================================================
- * Function:  make_inner_bump
+ * Function:  fillAll
  */
-void make_inner_bump(int bump_size, CRGB background, CRGB bump)
+void DualRingLED::fillAll(CRGB color)
 {
+    fill_solid(leds, NUM_LEDS, color);
+}
+
+/*===============================================================================
+ * Function:  fillInner
+ */
+void DualRingLED::fillInner(CRGB color)
+{
+    fill_solid(innerLEDs, DUAL_RING_NUM_INNER, color);
+}
+
+/*===============================================================================
+ * Function:  fillOuter
+ */
+void DualRingLED::fillOuter(CRGB color)
+{
+    fill_solid(outerLEDs, DUAL_RING_NUM_OUTER, color);
+}
+
+/*===============================================================================
+ * Function:  rotateInnerClockwise
+ */
+void DualRingLED::rotateInnerClockwise( void )
+{
+    _rotateDownHelper(innerLEDs, DUAL_RING_NUM_INNER);
+}  
+
+
+/*===============================================================================
+ * Function:  rotateInnerCounterClockwise
+ */
+void DualRingLED::rotateInnerCounterClockwise( void )
+{
+    _rotateUpHelper(innerLEDs, DUAL_RING_NUM_INNER);
+}  
+
+/*===============================================================================
+ * Function:  rotateOuterClockwise
+ */
+void DualRingLED::rotateOuterClockwise( void )
+{
+    _rotateUpHelper(outerLEDs, DUAL_RING_NUM_OUTER);  
+} 
+    
+/*===============================================================================
+ * Function:  rotateOuterCounterClockwise
+ */
+void DualRingLED::rotateOuterCounterClockwise( void )
+{
+    _rotateDownHelper(outerLEDs, DUAL_RING_NUM_OUTER);
+}
+
+
+
+/*===============================================================================
+ * Function:  makeInnerBump
+ */
+void DualRingLED::makeInnerBump(int bump_size, CRGB background, CRGB bump)
+{
+
   if (bump_size < 1) bump_size = 1;
   if (bump_size > 7) bump_size = 7;
   
-  fill_inner(background);
+  fillInner(background);
 
   // want the bump centered in the inner array, hence the 8
   make_bump(8, bump_size, background, bump);
 }
 
 /*===============================================================================
- * Function:  make_outer_bump
+ * Function:  makeOuterBump
  */
-void make_outer_bump(int bump_size, CRGB background, CRGB bump)
+void DualRingLED::makeOuterBump(int bump_size, CRGB background, CRGB bump)
 {
   if (bump_size < 1) bump_size = 1;
   if (bump_size > 11) bump_size = 11;
   
-  fill_outer(background);
+  fillOuter(background);
 
   // want the bump centered in the outer array, hence the 28
   make_bump(28, bump_size, background, bump);
 }
 
 /*===============================================================================
- * Function:  make_inner_clockwise_streak
+ * Function:  makeInnerClockwiseStreak
  */
-void make_inner_clockwise_streak(int streak_size, CRGB background, CRGB head)
+void DualRingLED::makeInnerClockwiseStreak(int streak_size, CRGB background, CRGB head)
 {
-  if (streak_size > NUM_INNER) streak_size = NUM_INNER;
+  if (streak_size > DUAL_RING_NUM_INNER) streak_size = DUAL_RING_NUM_INNER;
 
-  fill_inner(background);
+  fillInner(background);
 
   // inner indexes go counter-clockwise.  
   // we're gonna put the head at index 0, and then fade as array indexes increase
@@ -354,26 +343,26 @@ void make_inner_clockwise_streak(int streak_size, CRGB background, CRGB head)
 }
 
 /*===============================================================================
- * Function:  make_inner_counter_clockwise_streak
+ * Function:  makeInnerCounterClockwiseStreak
  */
-void make_inner_counter_clockwise_streak(int streak_size, CRGB background, CRGB head)
+void DualRingLED::makeInnerCounterClockwiseStreak(int streak_size, CRGB background, CRGB head)
 {
-  if (streak_size > NUM_INNER) streak_size = NUM_INNER;
+  if (streak_size > DUAL_RING_NUM_INNER) streak_size = DUAL_RING_NUM_INNER;
 
-  fill_inner(background);
+  fillInner(background);
 
   // since inner indexes go counter-clockwise, we need to start at the tail, and build to the head
   fill_gradient_RGB(leds, streak_size, background, head); 
 }
 
 /*===============================================================================
- * Function:  make_outer_clockwise_streak
+ * Function:  makeOuterClockwiseStreak
  */
-void make_outer_clockwise_streak(int streak_size, CRGB background, CRGB head)
+void DualRingLED::makeOuterClockwiseStreak(int streak_size, CRGB background, CRGB head)
 {
-  if (streak_size > NUM_OUTER) streak_size = NUM_OUTER;
+  if (streak_size > DUAL_RING_NUM_OUTER) streak_size = DUAL_RING_NUM_OUTER;
 
-  fill_outer(background);
+  fillOuter(background);
   
   // since outer indexes go counter-clockwise, we need to start at the tail, and build to the head
   fill_gradient_RGB(&(leds[OUTER_START]), streak_size, background, head); 
@@ -381,20 +370,20 @@ void make_outer_clockwise_streak(int streak_size, CRGB background, CRGB head)
 }
 
 /*===============================================================================
- * Function:  make_outer_counter_clockwise_streak
+ * Function:  makeOuterCounterClockwiseStreak
  */
-void make_outer_counter_clockwise_streak(int streak_size, CRGB background, CRGB head)
+void DualRingLED::makeOuterCounterClockwiseStreak(int streak_size, CRGB background, CRGB head)
 {
-  if (streak_size > NUM_OUTER) streak_size = NUM_OUTER;
+  if (streak_size > DUAL_RING_NUM_OUTER) streak_size = DUAL_RING_NUM_OUTER;
 
-  fill_outer(background);
+  fillOuter(background);
   
   // since outer indexes go counter-clockwise, we need to start at the head, and build to the tail
   fill_gradient_RGB(&(leds[OUTER_START]), streak_size, head, background); 
 }
 
 /*===================================================================================
- * Function: draw_inner_clockwise_streak
+ * Function: drawInnerClockwiseStreak
  * The draw_ functions are different from the make_ functions;
  *   - They don't fill in the background
  *   - You specify the starting location
@@ -402,17 +391,17 @@ void make_outer_counter_clockwise_streak(int streak_size, CRGB background, CRGB 
  *  What does this mean?  Use the make_ functions if you can.  If not, use draw_.
  *  
  */
-void draw_inner_clockwise_streak(int start_index, int streak_size, CRGB head, CRGB tail)
+void DualRingLED::drawInnerClockwiseStreak(int start_index, int streak_size, CRGB head, CRGB tail)
 {
    if (start_index < 0) start_index = 0;
-   if (start_index > LAST_INNER) start_index = LAST_INNER;
-   if (streak_size > NUM_INNER) streak_size = NUM_INNER;
+   if (start_index > DUAL_RING_LAST_INNER) start_index = DUAL_RING_LAST_INNER;
+   if (streak_size > DUAL_RING_NUM_INNER) streak_size = DUAL_RING_NUM_INNER;
 
-   draw_streak_helper(leds, NUM_INNER, start_index, streak_size, head, tail);
+   _drawStreakHelper(innerLeds, DUAL_RING_NUM_INNER, start_index, streak_size, head, tail);
 }
 
 /*===================================================================================
- * Function: draw_inner_counter_clockwise_streak
+ * Function: drawInnerCounterClockwiseStreak
  * The draw_ functions are different from the make_ functions;
  *   - They don't fill in the background
  *   - You specify the starting location
@@ -420,21 +409,21 @@ void draw_inner_clockwise_streak(int start_index, int streak_size, CRGB head, CR
  *  What does this mean?  Use the make_ functions if you can.  If not, use draw_.
  *  
  */
-void draw_inner_counter_clockwise_streak(int start_index, int streak_size, CRGB head, CRGB tail)
+void DualRingLED::drawInnerCounterClockwiseStreak(int start_index, int streak_size, CRGB head, CRGB tail)
 {
    if (start_index < 0) start_index = 0;
-   if (start_index > LAST_INNER) start_index = LAST_INNER;
-   if (streak_size > NUM_INNER) streak_size = NUM_INNER;
+   if (start_index > DUAL_RING_LAST_INNER) start_index = DUAL_RING_LAST_INNER;
+   if (streak_size > DUAL_RING_NUM_INNER) streak_size = DUAL_RING_NUM_INNER;
 
    // since we're filling "backwards", we need to adjust our starting position
    start_index = start_index - streak_size + 1;
-   if (start_index < 0) start_index = start_index + NUM_INNER;
+   if (start_index < 0) start_index = start_index + DUAL_RING_NUM_INNER;
     
-   draw_streak_helper(leds, NUM_INNER, start_index, streak_size, tail, head);
+   _drawStreakHelper(innerLeds, DUAL_RING_NUM_INNER, start_index, streak_size, tail, head);
 }
 
 /*===================================================================================
- * Function: draw_outer_clockwise_streak
+ * Function: drawOuterCounterClockwiseStreak
  * The draw_ functions are different from the make_ functions;
  *   - They don't fill in the background
  *   - You specify the starting location
@@ -443,17 +432,17 @@ void draw_inner_counter_clockwise_streak(int start_index, int streak_size, CRGB 
  *  
  *  Note that "start index" is the index into the outer_leds array, not the absolute index.
  */
-void draw_outer_counter_clockwise_streak(int start_index, int streak_size, CRGB head, CRGB tail)
+void DualRingLED::drawOuterCounterClockwiseStreak(int start_index, int streak_size, CRGB head, CRGB tail)
 {
    if (start_index < 0) start_index = 0;
-   if (start_index > NUM_OUTER) start_index = NUM_OUTER -1;
-   if (streak_size > NUM_OUTER) streak_size = NUM_OUTER;
+   if (start_index > DUAL_RING_LAST_OUTER) start_index = DUAL_RING_LAST_OUTER;
+   if (streak_size > DUAL_RING_NUM_OUTER) streak_size = DUAL_RING_NUM_OUTER;
 
-   draw_streak_helper(outer_leds, NUM_OUTER, start_index, streak_size, head, tail);
+   _drawStreakHelper(outerLeds, DUAL_RING_NUM_OUTER, start_index, streak_size, head, tail);
 }
 
 /*===================================================================================
- * Function: draw_outer_counter_clockwise_streak
+ * Function: drawOuterClockwiseStreak
  * The draw_ functions are different from the make_ functions;
  *   - They don't fill in the background
  *   - You specify the starting location
@@ -463,18 +452,73 @@ void draw_outer_counter_clockwise_streak(int start_index, int streak_size, CRGB 
  *  Note that "start index" is the index into the outer_leds array, not the absolute index.
  *  
  */
-void draw_outer_clockwise_streak(int start_index, int streak_size, CRGB head, CRGB tail)
+void DualRingLED::drawOuterClockwiseStreak(int start_index, int streak_size, CRGB head, CRGB tail)
 {
    if (start_index < 0) start_index = 0;
-   if (start_index > NUM_OUTER) start_index = NUM_OUTER - 1;
-   if (streak_size > NUM_OUTER) streak_size = NUM_OUTER;
+   if (start_index > DUAL_RING_LAST_OUTER) start_index = DUAL_RING_LAST_OUTER;
+   if (streak_size > DUAL_RING_NUM_OUTER) streak_size = DUAL_RING_NUM_OUTER;
 
    // since we're filling "backwards", we need to adjust our starting position
    start_index = start_index - streak_size + 1;
-   if (start_index < 0) start_index = start_index + NUM_OUTER;
+   if (start_index < 0) start_index = start_index + DUAL_RING_NUM_OUTER;
    
-   draw_streak_helper(outer_leds, NUM_OUTER, start_index, streak_size, tail, head);
+   _drawStreakHelper(outerLeds, DUAL_RING_NUM_OUTER, start_index, streak_size, tail, head);
 }
+
+
+/********===========  Begin Client code  =============*/
+
+
+// Hardware definitions for our LED strip.
+#define LED_PIN    6
+
+//CRGBPalette16 my_palette =
+const TProgmemPalette16 my_palette PROGMEM =
+{
+  CRGB::Blue,
+  CRGB::Red,
+  CRGB::Yellow,
+  CRGB::Blue,
+
+  CRGB::Blue,
+  CRGB::Red,
+  CRGB::Yellow,
+  CRGB::Blue,
+
+  CRGB::Blue,
+  CRGB::Red,
+  CRGB::Yellow,
+  CRGB::Blue,
+  
+  CRGB::Blue,
+  CRGB::Red,
+  CRGB::Yellow,
+  CRGB::Blue,
+
+};
+
+// We're using loop_delay to time our patterns...the bigger the delay, the slower the pattern.
+#define DEFAULT_LOOP_TIME 60
+#define MIN_LOOP_DELAY 10
+#define MAX_LOOP_DELAY 150
+int loop_delay=DEFAULT_LOOP_TIME;
+
+#if 0
+// These are the pre-defined patterns.  
+typedef enum
+{
+  PATTERN_BLACK,
+  PATTERN_TICK,
+  PATTERN_SYNC_CLOCKWISE,
+  PATTERN_SYNC_COUNTER,
+  PATTERN_PULSE,
+  PATTERN_OPPOSITES, 
+  PATTERN_TEST,
+  PATTERN_COLLIDE_OUTER
+} pattern_type;
+
+pattern_type current_pattern;
+
 
 /****=======================  PRE-DEFINED PATTERNS ============================******/
 //  These have an init_ function to set up the desired pattern, 
@@ -679,6 +723,7 @@ void move_tick_pattern( void )
       if (touch_delay == TOUCH_DELAY) touch_delay = 0;
     }
 }
+
 
 /********************************************
  * PATTERN:  test
@@ -894,34 +939,23 @@ void user_input( void )
   }
 }
 
+#endif // 0
+
+DualRingLED myLights(LED_PIN);
+
 void setup()
 {
 
     Serial.begin(9600);
-    
-    FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
-    FastLED.setBrightness(  BRIGHTNESS );
-    
-    // clear the array, just in case.
-    fill_all(CRGB::Black);
-    FastLED.show();
 
-    FastLED.delay(1000);
-
-    print_help();
-    
-    init_tick_pattern();
+    // print_help();
+    // init_tick_pattern();
 }
 
 void loop()
 {
-    user_input();
-    move_pattern();
+    // user_input();
+    // move_pattern();
     
-    FastLED.show();
-
-    //while (!Serial.available());               //wait for character...
-    //while (Serial.available()) Serial.read();  // and clear the buffer and move on...
-    FastLED.delay(loop_delay);
-
+   
 }
