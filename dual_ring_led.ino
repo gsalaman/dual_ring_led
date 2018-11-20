@@ -501,6 +501,8 @@ void DualRingLED::drawOuterClockwiseStreak(int start_index, int streak_size, CRG
 // Hardware definitions for our LED strip.
 #define LED_PIN    6
 
+DualRingLED myLights(LED_PIN);
+
 //CRGBPalette16 my_palette =
 const TProgmemPalette16 my_palette PROGMEM =
 {
@@ -532,26 +534,97 @@ const TProgmemPalette16 my_palette PROGMEM =
 #define MAX_LOOP_DELAY 150
 int loop_delay=DEFAULT_LOOP_TIME;
 
-#if 0
-// These are the pre-defined patterns.  
-typedef enum
-{
-  PATTERN_BLACK,
-  PATTERN_TICK,
-  PATTERN_SYNC_CLOCKWISE,
-  PATTERN_SYNC_COUNTER,
-  PATTERN_PULSE,
-  PATTERN_OPPOSITES, 
-  PATTERN_TEST,
-  PATTERN_COLLIDE_OUTER
-} pattern_type;
-
-pattern_type current_pattern;
-
-
 /****=======================  PRE-DEFINED PATTERNS ============================******/
 //  These have an init_ function to set up the desired pattern, 
 //  and a move_function that will be called in the main loop.
+
+
+/**********************************
+ * PATTERN_TEST
+ * 
+ */
+#define TEST_PATTERN_TIME_INCREMENT 100
+
+int  test_index = 0;
+bool test_inner=true;
+
+void init_test_pattern( void )
+{
+  myLights.fillAll(CRGB::Black);
+  
+  test_index = 0;
+  test_inner = true;
+}
+
+void move_test( void )
+{
+  static unsigned long last_update_time=0;
+  unsigned long        current_time;
+  CRGB                 color;
+
+  if (test_index > DUAL_RING_NUM_INNER + DUAL_RING_NUM_OUTER) return;
+  
+  current_time = millis();
+  
+  // The test pattern is not affected by the loop delay setting.
+  if (current_time > last_update_time + TEST_PATTERN_TIME_INCREMENT)
+  {
+    // make the "zeroth" led red.
+    if (test_index == 0)
+    {
+      color = CRGB::Red;
+    }
+    
+    // make the "first" led around the ring green.  This will show direction.
+    else if (test_index == 1)    
+    {
+      color = CRGB::Green;
+    }
+
+    // all the rest should be blue.
+    else
+    {
+      color = CRGB::Blue;
+    }
+
+    if (test_inner)
+    {
+      myLights.innerLEDs[test_index] = color;
+      test_index++;
+      if (test_index == DUAL_RING_NUM_INNER)
+      {
+        test_index = 0;
+        test_inner = false;
+      }
+    }
+    else
+    {
+      myLights.outerLEDs[test_index] = color;
+      test_index++;
+    }
+    
+    last_update_time = current_time;
+    test_index++;
+    
+  }  // if it's time for an update.
+  
+}  // end of move_test
+
+/*********************************************
+ * Pattern:  PATTERN_BLACK
+ * All LEDs go off.  
+ * Note that the move function does nothing..there's nothing to move.  :)
+ */
+void blackout( void )
+{
+  myLights.fillAll(CRGB::Black);
+  myLights.setPattern(empty_move);
+}
+
+void empty_move( void )
+{
+  // Do nothing...
+}
 
 /*********************************************
  * Pattern:  PATTERN_SYNC_CLOCKWISE
@@ -560,13 +633,11 @@ pattern_type current_pattern;
 void init_sync_clockwise( void )
 {
   int i;
-  make_outer_clockwise_streak(10, CRGB::Green, CRGB::Red);
-  make_inner_clockwise_streak(6, CRGB::Green, CRGB::Red); 
+  myLights.makeOuterClockwiseStreak(10, CRGB::Green, CRGB::Red);
+  myLights.makeInnerClockwiseStreak(6, CRGB::Green, CRGB::Red); 
 
   // for those streak sizes, the inner needs to rotate 6 spots to be aligned with the outer.
-  for (i=0;i<6;i++) rotate_inner_clockwise();
-  
-  current_pattern = PATTERN_SYNC_CLOCKWISE; 
+  for (i=0;i<6;i++) myLights.rotateInnerClockwise(); 
 }
 
 void move_sync_clockwise( void )
@@ -575,8 +646,8 @@ void move_sync_clockwise( void )
 
   // In order to sync the inner and outer lanes, we need to preserve the 3:2 ratio. 
   // common denominator stuff...that means 6 phases.  
-  if (phase % 2 == 0) rotate_outer_clockwise();
-  if (phase % 3 == 0) rotate_inner_clockwise();
+  if (phase % 2 == 0) myLights.rotateOuterClockwise();
+  if (phase % 3 == 0) myLights.rotateInnerClockwise();
 
   phase = phase + 1;
   phase = phase % 6;
@@ -589,13 +660,11 @@ void move_sync_clockwise( void )
 void init_sync_counter( void )
 {
   int i;
-  make_outer_counter_clockwise_streak(12, CRGB::Red, CRGB::Yellow);
-  make_inner_counter_clockwise_streak(8, CRGB::Red, CRGB::Yellow); 
+  myLights.makeOuterCounterClockwiseStreak(12, CRGB::Red, CRGB::Yellow);
+  myLights.makeInnerCounterClockwiseStreak(8, CRGB::Red, CRGB::Yellow); 
 
   // rotate the inner streak to line up with the outer streak
-  for (i=0;i<8;i++) rotate_inner_counter_clockwise();
-  
-  current_pattern = PATTERN_SYNC_COUNTER;
+  for (i=0;i<8;i++) myLights.rotateInnerCounterClockwise();
   
 }
 
@@ -605,25 +674,15 @@ void move_sync_counter( void )
 
   // In order to sync the inner and outer lanes, we need to preserve the 3:2 ratio. 
   // common denominator stuff...that means 6 phases.  
-  if (phase % 2 == 0) rotate_outer_counter_clockwise();
-  if (phase % 3 == 0) rotate_inner_counter_clockwise();
+  if (phase % 2 == 0) myLights.rotateOuterCounterClockwise();
+  if (phase % 3 == 0) myLights.rotateInnerCounterClockwise();
 
   phase = phase + 1;
   phase = phase % 6;
   
 }
 
-/*********************************************
- * Pattern:  PATTERN_BLACK
- * All LEDs go off.  
- * Note that we don't need a move function for this...there's nothing to move.  :)
- */
-void blackout( void )
-{
-  fill_all(CRGB::Black);
-  current_pattern = PATTERN_BLACK;
-}
-
+#if 0
 /*********************************************
  * Pattern:  PATTERN_PULSE
  * This pattern has all LEDs with the same color, but pulses
@@ -754,58 +813,6 @@ void move_tick_pattern( void )
 }
 
 
-/********************************************
- * PATTERN:  test
- */
-int test_index;
-
-void init_test( void )
-{
-  fill_all(CRGB::Black);
-  test_index = 0;
-  current_pattern = PATTERN_TEST;
-}
-
-#define TEST_PATTERN_TIME_INCREMENT 100
-void move_test( void )
-{
-  static unsigned long last_update_time=0;
-  unsigned long        current_time;
-  CRGB                 color;
-
-  if (test_index >= NUM_LEDS) return;
-
-  current_time = millis();
-  
-  // The test pattern is not affected by the loop delay setting.
-  if (current_time > last_update_time + TEST_PATTERN_TIME_INCREMENT)
-  {
-    // make the "zeroth" led red.
-    if ((test_index == INNER_START) || (test_index == OUTER_START))
-    {
-      color = CRGB::Red;
-    }
-    
-    // make the "first" led around the ring green.  This will show direction.
-    else if ((test_index == INNER_START + 1) || (test_index == OUTER_START + 1))
-    {
-      color = CRGB::Green;
-    }
-
-    // all the rest should be blue.
-    else
-    {
-      color = CRGB::Blue;
-    }
-
-    leds[test_index] = color;
-
-    last_update_time = current_time;
-    test_index++;
-    
-  }  // if it's time for an update.
-  
-}  // end of move_test
 
 /********************************************
  * PATTERN:  collide outer
@@ -837,40 +844,10 @@ void move_collide_outer( void )
   if (counter_clockwise_streak_index < 0) counter_clockwise_streak_index = NUM_OUTER - 1;
 }
 
+#endif 
+
+
 /*===================  MAIN FUNCTIONS ==============================*/
-void move_pattern( void )
-{
-  switch (current_pattern)
-  {
-    case PATTERN_TICK:  
-      move_tick_pattern();  
-    break;
-
-    case PATTERN_SYNC_CLOCKWISE:
-      move_sync_clockwise();
-    break;
-    
-    case PATTERN_SYNC_COUNTER:
-      move_sync_counter();
-    break;
-
-    case PATTERN_PULSE:
-      move_pulse();
-    break;
-
-    case PATTERN_OPPOSITES:
-      move_opposites();
-    break;
-
-    case PATTERN_TEST:
-      move_test();
-    break;
-
-    case PATTERN_COLLIDE_OUTER:
-      move_collide_outer();
-    break;
-  }
-}
 
 void print_help( void )
 {
@@ -917,7 +894,7 @@ void user_input( void )
       break;
 
       case '1':
-        init_tick_pattern();
+        //init_tick_pattern();
         Serial.println("Tick pattern chosen");
       break;
 
@@ -932,22 +909,22 @@ void user_input( void )
       break;
 
       case '4':
-         init_pulse();
+         //init_pulse();
          Serial.println("Pulse mode chosen");
       break;
 
       case '5':
-         init_opposites();
+         //init_opposites();
          Serial.println("Opposites mode chosen");
       break;
 
       case '6':
-          init_test();
+          init_test_pattern();
           Serial.println("Test pattern selected");
       break;
 
       case '7':
-          init_collide_outer();
+          //init_collide_outer();
           Serial.println("Collide outer pattern selected");
       break;
       
@@ -968,90 +945,22 @@ void user_input( void )
   }
 }
 
-#endif // 0
 
-DualRingLED myLights(LED_PIN);
 
-int  test_index = 0;
-bool test_inner=true;
-
-void init_test_pattern( void )
-{
-  myLights.fillAll(CRGB::Black);
-  test_index = 0;
-  test_inner = true;
-}
-
-#define TEST_PATTERN_TIME_INCREMENT 100
-void move_test( void )
-{
-  static unsigned long last_update_time=0;
-  unsigned long        current_time;
-  CRGB                 color;
-
-  if (test_index > DUAL_RING_NUM_INNER + DUAL_RING_NUM_OUTER) return;
-  
-  current_time = millis();
-  
-  // The test pattern is not affected by the loop delay setting.
-  if (current_time > last_update_time + TEST_PATTERN_TIME_INCREMENT)
-  {
-    // make the "zeroth" led red.
-    if (test_index == 0)
-    {
-      color = CRGB::Red;
-    }
-    
-    // make the "first" led around the ring green.  This will show direction.
-    else if (test_index == 1)    
-    {
-      color = CRGB::Green;
-    }
-
-    // all the rest should be blue.
-    else
-    {
-      color = CRGB::Blue;
-    }
-
-    if (test_inner)
-    {
-      myLights.innerLEDs[test_index] = color;
-      test_index++;
-      if (test_index == DUAL_RING_NUM_INNER)
-      {
-        test_index = 0;
-        test_inner = false;
-      }
-    }
-    else
-    {
-      myLights.outerLEDs[test_index] = color;
-      test_index++;
-    }
-    
-    last_update_time = current_time;
-    test_index++;
-    
-  }  // if it's time for an update.
-  
-}  // end of move_test
 
 void setup()
 {
 
     Serial.begin(9600);
 
-    // print_help();
-    // init_tick_pattern();
-
+    print_help();
+    
     myLights.setPattern(move_test);
 }
 
 void loop()
 {
-    // user_input();
-    // move_pattern();
+    user_input();
 
     myLights.run();
    
