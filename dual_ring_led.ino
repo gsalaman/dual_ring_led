@@ -898,7 +898,7 @@ void user_input( void )
       break;
 
       case '1':
-        //init_tick_pattern();
+        init_tick_pattern();
         Serial.println("Tick pattern chosen");
       break;
 
@@ -918,7 +918,7 @@ void user_input( void )
       break;
 
       case '5':
-         //init_opposites();
+         init_opposites();
          Serial.println("Opposites mode chosen");
       break;
 
@@ -928,7 +928,7 @@ void user_input( void )
       break;
 
       case '7':
-          //init_collide_outer();
+          init_collide_outer();
           Serial.println("Collide outer pattern selected");
       break;
       
