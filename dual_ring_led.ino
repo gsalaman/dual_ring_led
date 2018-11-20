@@ -641,6 +641,8 @@ void init_sync_clockwise( void )
 
   // for those streak sizes, the inner needs to rotate 6 spots to be aligned with the outer.
   for (i=0;i<6;i++) myLights.rotateInnerClockwise(); 
+
+  myLights.setPattern(move_sync_clockwise);
 }
 
 void move_sync_clockwise( void )
@@ -654,6 +656,7 @@ void move_sync_clockwise( void )
 
   phase = phase + 1;
   phase = phase % 6;
+
 }
 
 /*********************************************
@@ -668,6 +671,8 @@ void init_sync_counter( void )
 
   // rotate the inner streak to line up with the outer streak
   for (i=0;i<8;i++) myLights.rotateInnerCounterClockwise();
+
+  myLights.setPattern(move_sync_counter);
   
 }
 
@@ -685,7 +690,7 @@ void move_sync_counter( void )
   
 }
 
-#if 0
+
 /*********************************************
  * Pattern:  PATTERN_PULSE
  * This pattern has all LEDs with the same color, but pulses
@@ -697,8 +702,8 @@ void init_pulse( void )
   CRGB color;
 
   color = ColorFromPalette(my_palette, 0);
-  fill_all(color);
-  current_pattern = PATTERN_PULSE;
+  myLights.fillAll(color);
+  myLights.setPattern(move_pulse);
 }
 
 void move_pulse( void )
@@ -708,7 +713,7 @@ void move_pulse( void )
   
   color = ColorFromPalette(my_palette, index);
 
-  fill_all(color);
+  myLights.fillAll(color);
 
   index++;
 }
@@ -720,16 +725,17 @@ void move_pulse( void )
  */
 void init_opposites( void )
 {
-    current_pattern = PATTERN_OPPOSITES;
-    make_outer_bump(6, CRGB::Blue, CRGB::Yellow);
-    make_inner_clockwise_streak(4, CRGB::Blue, CRGB::Yellow);
+    myLights.makeOuterBump(6, CRGB::Blue, CRGB::Yellow);
+    myLights.makeInnerClockwiseStreak(4, CRGB::Blue, CRGB::Yellow);
+    myLights.setPattern(move_opposites);
 }
 
 void move_opposites( void )
 {
-    rotate_inner_clockwise();
-    rotate_outer_counter_clockwise();  
+    myLights.rotateInnerClockwise();
+    myLights.rotateOuterCounterClockwise();  
 }
+
 /*********************************************
  * Pattern:  PATTERN_TICK
  * The outer ring has a streak that moves clockwise.
@@ -780,9 +786,10 @@ bool touching(int inner, int outer)
 
 void init_tick_pattern( void )
 {
-  make_outer_clockwise_streak(8, CRGB::Blue, CRGB::Red);
-  make_inner_bump(3, CRGB::Blue, CRGB::Red);
-  current_pattern = PATTERN_TICK;
+  myLights.makeOuterClockwiseStreak(8, CRGB::Blue, CRGB::Red);
+  myLights.makeInnerBump(3, CRGB::Blue, CRGB::Red);
+
+  myLights.setPattern(move_tick_pattern);
   
   inner_pos = 8;
   outer_pos = 7;
@@ -793,18 +800,18 @@ void move_tick_pattern( void )
 {
     static int touch_delay=0;
     
-    rotate_outer_clockwise();
+    myLights.rotateOuterClockwise();
     outer_pos++;
-    outer_pos = outer_pos % NUM_OUTER;
+    outer_pos = outer_pos % DUAL_RING_NUM_OUTER;
  
     if (touch_delay == 0)
     {
       
       if (touching(inner_pos, outer_pos))
       {
-        rotate_inner_clockwise();
+        myLights.rotateInnerClockwise();
         inner_pos++;
-        inner_pos = inner_pos % NUM_INNER;
+        inner_pos = inner_pos % DUAL_RING_NUM_INNER;
         touch_delay = 1;
       }
     }
@@ -815,8 +822,6 @@ void move_tick_pattern( void )
     }
 }
 
-
-
 /********************************************
  * PATTERN:  collide outer
  */
@@ -825,30 +830,26 @@ int counter_clockwise_streak_index;
 
 void init_collide_outer( void )
 {
-    current_pattern = PATTERN_COLLIDE_OUTER;  
 
-    fill_all(CRGB::Black);
-
+    myLights.fillAll(CRGB::Black);
+    myLights.setPattern(move_collide_outer);
     clockwise_streak_index=0;
     counter_clockwise_streak_index=0;
 }
 
 void move_collide_outer( void )
 {
-  fill_outer(CRGB::Black);
+  myLights.fillOuter(CRGB::Black);
   
-  draw_outer_counter_clockwise_streak(counter_clockwise_streak_index, 5, CRGB::Red, CRGB::Blue);
-  draw_outer_clockwise_streak(clockwise_streak_index, 5, CRGB::Red, CRGB::Blue);
+  myLights.drawOuterCounterClockwiseStreak(counter_clockwise_streak_index, 5, CRGB::Red, CRGB::Blue);
+  myLights.drawOuterClockwiseStreak(clockwise_streak_index, 5, CRGB::Red, CRGB::Blue);
 
   clockwise_streak_index++;
-  if (clockwise_streak_index > NUM_OUTER) clockwise_streak_index = 0;
+  if (clockwise_streak_index >DUAL_RING_NUM_OUTER) clockwise_streak_index = 0;
 
   counter_clockwise_streak_index--;
-  if (counter_clockwise_streak_index < 0) counter_clockwise_streak_index = NUM_OUTER - 1;
+  if (counter_clockwise_streak_index < 0) counter_clockwise_streak_index = DUAL_RING_NUM_OUTER - 1;
 }
-
-#endif 
-
 
 /*===================  MAIN FUNCTIONS ==============================*/
 
@@ -912,7 +913,7 @@ void user_input( void )
       break;
 
       case '4':
-         //init_pulse();
+         init_pulse();
          Serial.println("Pulse mode chosen");
       break;
 
@@ -965,6 +966,6 @@ void loop()
 {
     user_input();
 
-    myLights.run();
+    myLights.run(loop_delay);
    
 }
