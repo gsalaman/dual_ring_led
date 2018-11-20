@@ -68,7 +68,7 @@ class DualRingLED
 
   private:
     CRGB             _leds[40];
-    dualRingFuncType _runFunc;
+    dualRingFuncType _runFunc=NULL;
 
     /* I don't think these actually need to be in the class...*/
     void _rotateDownHelper( CRGB *startLed, int num );
@@ -120,12 +120,19 @@ DualRingLED::DualRingLED(int pin)
 
 void DualRingLED::run( void )
 {
-  _runFunc();
+  if (_runFunc)
+  {
+    _runFunc();
+  }
 }
 
 void DualRingLED::run( int delay )
 {
-  _runFunc();
+  if (_runFunc)
+  {
+    _runFunc();
+  }
+  
   FastLED.delay(delay);
 }
 
@@ -618,13 +625,9 @@ void move_test( void )
 void blackout( void )
 {
   myLights.fillAll(CRGB::Black);
-  myLights.setPattern(empty_move);
+  myLights.setPattern(NULL);
 }
 
-void empty_move( void )
-{
-  // Do nothing...
-}
 
 /*********************************************
  * Pattern:  PATTERN_SYNC_CLOCKWISE
