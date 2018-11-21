@@ -40,6 +40,7 @@ class DualRingLED
 {
   public:
     DualRingLED(int pin);
+    void begin(void);
     void run(void);
     void run(int delay);
     CRGB *innerLEDs;
@@ -69,6 +70,7 @@ class DualRingLED
   private:
     CRGB             _leds[40];
     dualRingFuncType _runFunc=NULL;
+    int              _pin;
 
     /* I don't think these actually need to be in the class...*/
     void _rotateDownHelper( CRGB *startLed, int num );
@@ -90,13 +92,16 @@ class DualRingLED
 
 #define DEFAULT_BRIGHTNESS 30
 
-DualRingLED::DualRingLED(int pin)
+void DualRingLED::begin( void )
 {
     //  HMMM...Fast LED doesn't like passing pin...must be a template thing.  
     //  I'm gonna cheat by case-switching this with constants.
     //  Assuming we're not using 0, 1, 2, or 3 (serial pins or xbee pins).  Also assuming not using analog pins.
-    //FastLED.addLeds<LED_TYPE, pin, COLOR_ORDER>(_leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
-    switch (pin)
+    
+    FastLED.addLeds<LED_TYPE, 6, COLOR_ORDER>(_leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
+
+    #if 0 
+    switch (_pin)
     {
       case 4: FastLED.addLeds<LED_TYPE, 4, COLOR_ORDER>(_leds, NUM_LEDS).setCorrection( TypicalLEDStrip ); break;
       case 5: FastLED.addLeds<LED_TYPE, 5, COLOR_ORDER>(_leds, NUM_LEDS).setCorrection( TypicalLEDStrip ); break;
@@ -110,12 +115,20 @@ DualRingLED::DualRingLED(int pin)
       case 13: FastLED.addLeds<LED_TYPE, 13, COLOR_ORDER>(_leds, NUM_LEDS).setCorrection( TypicalLEDStrip ); break;
       default: return;
     }
+    #endif
     
     FastLED.setBrightness(  DEFAULT_BRIGHTNESS );
     
     // clear the array, just in case.
+
     fillAll(CRGB::Black);
     FastLED.show();
+ 
+}
+
+DualRingLED::DualRingLED(int pin)
+{
+  _pin = pin;
 }
 
 void DualRingLED::run( void )
@@ -124,6 +137,8 @@ void DualRingLED::run( void )
   {
     _runFunc();
   }
+  
+  FastLED.show();
 }
 
 void DualRingLED::run( int delay )
@@ -132,7 +147,8 @@ void DualRingLED::run( int delay )
   {
     _runFunc();
   }
-  
+
+  FastLED.show();
   FastLED.delay(delay);
 }
 
@@ -569,7 +585,7 @@ void move_test( void )
   unsigned long        current_time;
   CRGB                 color;
 
-  if (test_index > DUAL_RING_NUM_INNER + DUAL_RING_NUM_OUTER) return;
+  if (test_index > DUAL_RING_NUM_OUTER) return;
   
   current_time = millis();
   
@@ -611,7 +627,6 @@ void move_test( void )
     }
     
     last_update_time = current_time;
-    test_index++;
     
   }  // if it's time for an update.
   
@@ -956,8 +971,12 @@ void setup()
 {
 
     Serial.begin(9600);
+    
+    myLights.begin();
 
     print_help();
+
+    myLights.fillAll(CRGB::Gray);
     
     myLights.setPattern(move_test);
 }
