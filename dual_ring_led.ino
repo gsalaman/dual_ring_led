@@ -129,6 +129,8 @@ void DualRingLED::begin( void )
 DualRingLED::DualRingLED(int pin)
 {
   _pin = pin;
+  innerLEDs = _leds;
+  outerLEDs = &(_leds[DUAL_RING_NUM_INNER]);
 }
 
 void DualRingLED::run( void )
@@ -141,7 +143,7 @@ void DualRingLED::run( void )
   FastLED.show();
 }
 
-void DualRingLED::run( int delay )
+void DualRingLED::run( int delay_ms )
 {
   if (_runFunc)
   {
@@ -149,7 +151,7 @@ void DualRingLED::run( int delay )
   }
 
   FastLED.show();
-  FastLED.delay(delay);
+  FastLED.delay(delay_ms);
 }
 
 void DualRingLED::setPattern(dualRingFuncType func)
@@ -577,6 +579,8 @@ void init_test_pattern( void )
   
   test_index = 0;
   test_inner = true;
+
+  myLights.setPattern(move_test);
 }
 
 void move_test( void )
@@ -584,14 +588,16 @@ void move_test( void )
   static unsigned long last_update_time=0;
   unsigned long        current_time;
   CRGB                 color;
-
+ 
   if (test_index > DUAL_RING_NUM_OUTER) return;
-  
+
   current_time = millis();
-  
+
+
   // The test pattern is not affected by the loop delay setting.
   if (current_time > last_update_time + TEST_PATTERN_TIME_INCREMENT)
   {
+  
     // make the "zeroth" led red.
     if (test_index == 0)
     {
@@ -625,7 +631,8 @@ void move_test( void )
       myLights.outerLEDs[test_index] = color;
       test_index++;
     }
-    
+
+
     last_update_time = current_time;
     
   }  // if it's time for an update.
@@ -866,6 +873,22 @@ void move_collide_outer( void )
   if (counter_clockwise_streak_index < 0) counter_clockwise_streak_index = DUAL_RING_NUM_OUTER - 1;
 }
 
+void move_clockwise( void )
+{
+  myLights.rotateOuterClockwise();
+  myLights.rotateInnerClockwise();  
+
+}
+
+void init_clockwise( void )
+{
+  myLights.makeInnerClockwiseStreak(4, CRGB::Green, CRGB::Red);
+  myLights.makeOuterClockwiseStreak(6, CRGB::Green, CRGB::Red);
+
+  myLights.setPattern(move_clockwise);
+
+}
+
 /*===================  MAIN FUNCTIONS ==============================*/
 
 void print_help( void )
@@ -977,8 +1000,9 @@ void setup()
     print_help();
 
     myLights.fillAll(CRGB::Gray);
+ 
+    init_test_pattern();
     
-    myLights.setPattern(move_test);
 }
 
 void loop()
